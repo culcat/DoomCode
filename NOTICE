@@ -1,0 +1,34 @@
+# NOTICE
+
+`opencode-doom` is licensed under the GNU General Public License v2.0
+(see `LICENSE`).
+
+## Third-party components
+
+### doomgeneric
+
+The game engine is [doomgeneric](https://github.com/ozkl/doomgeneric) by
+Ozan Kılıç, based on the DOOM source release by id Software.
+
+- License: GPL-2.0-or-later
+- The WASM build in `vendor/engine/doom.{js,wasm}` is downloaded by
+  `scripts/fetch-assets.mjs` from the `@muhammedaksam/opentui-doom` npm package
+  (MIT-licensed wrapper, see below). It is not committed to this repository.
+
+### @muhammedaksam/opentui-doom
+
+The prebuilt doomgeneric WASM module and the extracted DOOM sound assets are
+taken from <https://github.com/muhammedaksam/opentui-doom> (MIT). Used as an
+asset source only; none of its runtime code is imported by this plugin.
+
+### DOOM shareware data
+
+`vendor/doom1.wad` and the files in `vendor/sound/` are data from the DOOM
+shareware release, (c) id Software. They are downloaded on demand and are not
+committed to this repository. DOOM shareware permits free redistribution; the
+registered game data does not, and this project does not ship or download it.
+
+### OpenTUI / OpenCode
+
+The plugin targets the OpenTUI renderer and plugin API bundled with OpenCode.
+Those packages keep their own licenses (MIT).

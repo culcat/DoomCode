@@ -1,0 +1,42 @@
+{
+  "name": "opencode-doom",
+  "version": "0.1.0",
+  "description": "DOOM (Knee-Deep in the Dead) running inside the OpenCode TUI",
+  "type": "module",
+  "license": "GPL-2.0-only",
+  "exports": {
+    "./tui": "./src/tui.tsx"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "NOTICE"
+  ],
+  "scripts": {
+    "fetch-assets": "bun run scripts/fetch-assets.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "bun run scripts/smoke.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "doom",
+    "tui",
+    "opentui"
+  ],
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.2.7",
+    "@opentui/core": ">=0.8.1",
+    "@opentui/solid": ">=0.8.1",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "2.2.7",
+    "@opencode/theme": "2.2.7",
+    "@opentui/core": "0.8.4",
+    "@opentui/solid": "0.8.4",
+    "@types/bun": "latest",
+    "solid-js": "1.9.12",
+    "typescript": "5.9.3"
+  }
+}
