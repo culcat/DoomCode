@@ -78,6 +78,23 @@ export default Plugin.define({
 function PanelHost(props: { panel: Parameters<typeof DoomWindow>[0]["panel"]; options: DoomOptions }) {
   const context = usePlugin()
 
+  // The host owns panel focus semantics, so closing is claimed explicitly:
+  // this layer only exists while the panel contribution is mounted.
+  context.keymap.layer(() => ({
+    mode: "global",
+    priority: 30,
+    commands: [
+      {
+        id: "doom.close",
+        title: "DOOM: close window",
+        group: "Doom",
+        bind: "escape",
+        enabled: () => props.panel.focused,
+        run: () => context.ui.panel.close(),
+      },
+    ],
+  }))
+
   return (
     <DoomWindow
       renderer={context.renderer}
