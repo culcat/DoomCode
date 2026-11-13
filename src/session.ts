@@ -22,7 +22,10 @@ export interface GameSessionOptions {
   rows: number
   fps?: number
   sound?: boolean
-  sink: CellSink
+  /** Cell sink for the portable half-block renderer. */
+  sink?: CellSink
+  /** Custom presenter, used instead of `sink` for native pixel rendering. */
+  present?: (engine: Doom) => void
   /** Called after each rendered frame so the host can request a repaint. */
   onFrame: () => void
   onStatus?: (status: SessionStatus) => void
@@ -57,6 +60,7 @@ export class GameSession {
   }
 
   static async create(options: GameSessionOptions): Promise<GameSession> {
+    if (!options.present && !options.sink) throw new Error("GameSession needs a sink or a presenter")
     const session = new GameSession(options)
     await session.#boot()
     return session
@@ -136,8 +140,12 @@ export class GameSession {
     this.#releaseExpiredKeys()
     this.#engine.tick()
 
-    const crop = aspectCrop(this.#cols, this.#rows)
-    renderHalfBlock(this.#engine.sampler(), { cols: this.#cols, rows: this.#rows, crop }, this.#options.sink)
+    if (this.#options.present) {
+      this.#options.present(this.#engine)
+    } else if (this.#options.sink) {
+      const crop = aspectCrop(this.#cols, this.#rows)
+      renderHalfBlock(this.#engine.sampler(), { cols: this.#cols, rows: this.#rows, crop }, this.#options.sink)
+    }
     this.#options.onFrame()
 
     const now = performance.now()

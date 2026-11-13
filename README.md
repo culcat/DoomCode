@@ -5,8 +5,9 @@ DOOM in the OpenCode TUI. `/doom` opens a small window inside a session panel an
 compiled to WebAssembly.
 
 No external app, no browser, no DOSBox: the engine ticks inside the TUI process and paints
-two pixels per terminal cell with the upper half block `▀`, so a 74×23 panel still shows a
-readable 74×46 view.
+up to four pixels per terminal cell with quadrant block glyphs, so a 74×23 panel still shows
+a 148×92 picture. If the terminal exposes Kitty graphics or Sixel, the panel switches to
+native pixels (640×400) instead.
 
 ## Requirements
 
@@ -36,6 +37,18 @@ Register the plugin in `~/.config/opencode/cli.json`:
 
 OpenCode reloads it without a restart. Run `/doom` (or pick *DOOM: play Knee-Deep in the
 Dead* in the command palette) from any session. `Esc` closes the window and saves.
+
+## Rendering modes
+
+| `render` | What it does | Cells → pixels |
+| --- | --- | --- |
+| `auto` (default) | Native pixels when the terminal supports Kitty/Sixel, otherwise quadrant cells | 148×92 or 640×400 |
+| `quadrant` | 2×2 pixels per cell with block glyphs (`▘▝▖▗▚▞` …), two colours per cell | panel width ×2 |
+| `half` | Upper half block `▀`: two pixels per cell, works in every terminal | panel width ×1 |
+| `image` | Always native pixels; falls back to quadrant cells when the terminal reports only block rendering | 640×400 |
+
+Quadrant cells are the default on terminals OpenCode does not report as graphic-capable. They
+give twice the detail of `half` in both axes at roughly the same frame cost.
 
 ## Controls
 
@@ -69,7 +82,8 @@ panel is focused; switching away pauses the engine and silences music.
         "rows": 28,        // defaults to a 16:10 window derived from cols
         "fps": 30,         // 10..60
         "sound": true,
-        "wad": "/path/to/DOOM.WAD"
+        "wad": "/path/to/DOOM.WAD",
+        "render": "auto"   // auto | image | quadrant | half
       }
     }
   ]
@@ -100,7 +114,9 @@ vendor/sound/*.wav|mp3     DOOM sound effects and music
   and save syncing.
 - `src/engine.ts` loads the Emscripten glue, feeds it the WAD through the in-memory
   filesystem, and exposes `tick`, `readPixel` and `key`.
-- `src/render.ts` turns ARGB pixels into `▀` cells with a letterboxed 16:10 crop.
+- `src/render.ts` turns pixels into cells: quadrant blocks (2×2 per cell) or `▀` (1×2), with
+  a letterboxed 16:10 crop.
+- `src/frames.ts` downscales ARGB frames to RGBA for the native image presenter.
 - `src/audio.ts` plays SFX and looping music through `mpv`, or `afplay` on macOS.
 
 Measured on an M-series Mac in Ghostty: 30 fps steady, ~6 ms per frame at 74×23 cells.
@@ -113,6 +129,7 @@ bun run smoke          # headless engine benchmark (no TUI)
 bun run window-check   # renders the real window in an in-memory renderer, presses keys
 bun run saves-check    # save round-trip
 bun run dump-frames    # writes /tmp/doom-frame-*.png
+bun run compare-render # half-block vs quadrant, side by side in /tmp
 ```
 
 `bunfig.toml` preloads the Solid transform (`@opentui/solid/bun-plugin`); JSX only behaves

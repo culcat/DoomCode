@@ -19,7 +19,8 @@
     "window-check": "bun --conditions=browser run scripts/window-check.tsx",
     "render-check": "bun --conditions=browser run scripts/render-check.tsx",
     "dump-frames": "bun run scripts/dump-frames.ts",
-    "saves-check": "bun run scripts/saves-check.ts"
+    "saves-check": "bun run scripts/saves-check.ts",
+    "compare-render": "bun run scripts/compare-render.ts"
   },
   "keywords": [
     "opencode",

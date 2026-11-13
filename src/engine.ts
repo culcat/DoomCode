@@ -65,6 +65,7 @@ interface EmscriptenModule {
   _DG_PushKeyEvent: (pressed: number, key: number) => void
   _malloc: (size: number) => number
   _free: (ptr: number) => void
+  DG_FrameView?: () => Uint8Array
   setValue: (ptr: number, value: number, type: string) => void
   getValue: (ptr: number, type: string) => number
   FS_createPath: (parent: string, name: string, canRead: boolean, canWrite: boolean) => string
@@ -105,7 +106,7 @@ type ModuleFactory = (config: Record<string, unknown>) => Promise<EmscriptenModu
  * Node and inside OpenCode's plugin host alike.
  */
 async function loadFactory(path: string): Promise<ModuleFactory> {
-  const source = readFileSync(path, "utf8")
+  const source = patchGlue(readFileSync(path, "utf8"))
   const module = { exports: {} as unknown }
   const wrapper = new Function("module", "exports", "require", "__filename", "__dirname", source) as (
     module: { exports: unknown },
@@ -122,6 +123,29 @@ async function loadFactory(path: string): Promise<ModuleFactory> {
     typeof exported === "function" ? exported : (exported as { default?: unknown } | undefined)?.default
   if (typeof factory !== "function") throw new Error(`could not load doomgeneric module from ${path}`)
   return factory as ModuleFactory
+}
+
+/**
+ * The upstream build exposes pixels only through `getValue`, which is far too
+ * slow for full-frame reads. The glue keeps its heap in a closure, so a small
+ * injected accessor is the cheapest way to get a live view without rebuilding
+ * the WASM module. It reads `HEAPU8` on every call, so memory growth is safe.
+ */
+const FRAME_PATCH_MARKER = "DG_FrameView"
+
+function patchGlue(source: string): string {
+  if (source.includes(FRAME_PATCH_MARKER)) return source
+
+  const marker = "return Module}"
+  const index = source.lastIndexOf(marker)
+  if (index === -1) return source
+
+  const patch =
+    `Module["${FRAME_PATCH_MARKER}"]=function(){var p=Module["_DG_GetFrameBuffer"]();` +
+    `var end=Math.min(p+${ENGINE_WIDTH * ENGINE_HEIGHT * 4},HEAPU8.length);` +
+    `return HEAPU8.subarray(p,end)};`
+
+  return source.slice(0, index) + patch + source.slice(index)
 }
 
 export class Doom {
@@ -205,9 +229,28 @@ export class Doom {
     return value & 0xffffff
   }
 
+  /**
+   * Raw frame bytes in ARGB order, as a live view into WASM memory.
+   * `undefined` when the glue build does not expose the accessor.
+   */
+  frameView(): Uint8Array | undefined {
+    return this.#module.DG_FrameView?.()
+  }
+
   /** Sampler bound to the current frame, for `renderHalfBlock`. */
   sampler(): (x: number, y: number) => number {
     return (x, y) => this.readPixel(x, y)
+  }
+
+  /**
+   * Sampler that reads the live frame view instead of going through the glue
+   * for every pixel; an order of magnitude faster for cell rendering.
+   */
+  frameSampler(): ((x: number, y: number) => number) | undefined {
+    const view = this.frameView()
+    if (!view) return undefined
+    const pixels = new Uint32Array(view.buffer, view.byteOffset, (view.byteLength / 4) | 0)
+    return (x, y) => (pixels[y * this.width + x] ?? 0) & 0xffffff
   }
 
   /** Queues a key press or release. DOOM polls these events itself. */
