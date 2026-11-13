@@ -15,7 +15,11 @@
   "scripts": {
     "fetch-assets": "bun run scripts/fetch-assets.ts",
     "typecheck": "tsc --noEmit",
-    "smoke": "bun run scripts/smoke.ts"
+    "smoke": "bun run scripts/smoke.ts",
+    "window-check": "bun --conditions=browser run scripts/window-check.tsx",
+    "render-check": "bun --conditions=browser run scripts/render-check.tsx",
+    "dump-frames": "bun run scripts/dump-frames.ts",
+    "saves-check": "bun run scripts/saves-check.ts"
   },
   "keywords": [
     "opencode",

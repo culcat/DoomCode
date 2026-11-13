@@ -6,7 +6,7 @@
  */
 import { createRequire } from "node:module"
 import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 import { ENGINE_HEIGHT, ENGINE_WIDTH, assetsDir } from "./paths"
 
@@ -94,6 +94,36 @@ const DEFAULT_CFG = [
   "screenblocks 10",
 ].join("\n")
 
+type ModuleFactory = (config: Record<string, unknown>) => Promise<EmscriptenModule>
+
+/**
+ * Loads the Emscripten glue.
+ *
+ * The build is a CommonJS bundle whose top-level `await` makes hosts treat the
+ * file as an async module, which `require()` rejects and `import()` exposes
+ * without exports. Evaluating the source as a CommonJS wrapper works in Bun,
+ * Node and inside OpenCode's plugin host alike.
+ */
+async function loadFactory(path: string): Promise<ModuleFactory> {
+  const source = readFileSync(path, "utf8")
+  const module = { exports: {} as unknown }
+  const wrapper = new Function("module", "exports", "require", "__filename", "__dirname", source) as (
+    module: { exports: unknown },
+    exports: unknown,
+    require: NodeJS.Require,
+    filename: string,
+    dirname: string,
+  ) => void
+
+  wrapper(module, module.exports, createRequire(path), path, dirname(path))
+
+  const exported = module.exports
+  const factory =
+    typeof exported === "function" ? exported : (exported as { default?: unknown } | undefined)?.default
+  if (typeof factory !== "function") throw new Error(`could not load doomgeneric module from ${path}`)
+  return factory as ModuleFactory
+}
+
 export class Doom {
   readonly width = ENGINE_WIDTH
   readonly height = ENGINE_HEIGHT
@@ -109,11 +139,10 @@ export class Doom {
   static async create(options: DoomOptions): Promise<Doom> {
     const engineDir = join(assetsDir(), "engine")
     const wasmPath = join(engineDir, "doom.wasm")
-    const jsPath = join(engineDir, "doom.js")
+    const jsPath = join(engineDir, "doom.cjs")
 
     const wad = readFileSync(options.wad)
-    const require = createRequire(import.meta.url)
-    const createModule = require(jsPath) as (config: Record<string, unknown>) => Promise<EmscriptenModule>
+    const createModule = await loadFactory(jsPath)
 
     const audio = options.sound === false ? undefined : options.audio
     const print = options.onPrint ?? (() => {})

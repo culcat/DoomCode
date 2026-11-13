@@ -20,6 +20,8 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, write
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { downloadWad, isValidWad } from "../src/wad"
+
 const ROOT = join(import.meta.dir, "..")
 const VENDOR = join(ROOT, "vendor")
 const ENGINE_DIR = join(VENDOR, "engine")
@@ -30,12 +32,6 @@ const MANIFEST = join(VENDOR, "assets.json")
 const ENGINE_PACKAGE = "@muhammedaksam/opentui-doom"
 const ENGINE_VERSION = "0.4.0"
 const ENGINE_TARBALL = `https://registry.npmjs.org/@muhammedaksam/opentui-doom/-/opentui-doom-${ENGINE_VERSION}.tgz`
-
-/** Shareware DOOM1.WAD (v1.8, episode 1) from the idgames mirror. */
-const WAD_CANDIDATES = [
-  "https://ftp.fu-berlin.de/pc/games/idgames/idstuff/doom/doom-1.8.wad.gz",
-  "https://ftp.fu-berlin.de/pc/games/idgames/idstuff/doom/doom19s.zip",
-]
 
 const args = new Set(Bun.argv.slice(2))
 const withSound = !args.has("--no-sound")
@@ -63,7 +59,7 @@ function write(path: string, bytes: Uint8Array) {
 }
 
 async function fetchEngine(tmp: string) {
-  const needed = [join(ENGINE_DIR, "doom.js"), join(ENGINE_DIR, "doom.wasm")]
+  const needed = [join(ENGINE_DIR, "doom.cjs"), join(ENGINE_DIR, "doom.wasm")]
   if (needed.every(existsSync)) {
     log("engine already present, skipping")
     return
@@ -77,12 +73,15 @@ async function fetchEngine(tmp: string) {
   const tar = Bun.spawnSync(["tar", "-xzf", tarball, "-C", extracted])
   if (tar.exitCode !== 0) throw new Error(`tar failed: ${tar.stderr.toString()}`)
 
-  for (const file of ["doom.js", "doom.wasm"]) {
-    const from = join(extracted, "package", "doom", "build", file)
-    if (!existsSync(from)) throw new Error(`missing ${file} in ${ENGINE_PACKAGE}`)
+  for (const [source, target] of [
+    ["doom.js", "doom.cjs"],
+    ["doom.wasm", "doom.wasm"],
+  ] as const) {
+    const from = join(extracted, "package", "doom", "build", source)
+    if (!existsSync(from)) throw new Error(`missing ${source} in ${ENGINE_PACKAGE}`)
     mkdirSync(ENGINE_DIR, { recursive: true })
-    renameSync(from, join(ENGINE_DIR, file))
-    log(`engine/${file} (${(statSync(join(ENGINE_DIR, file)).size / 1024).toFixed(0)} KiB)`)
+    renameSync(from, join(ENGINE_DIR, target))
+    log(`engine/${target} (${(statSync(join(ENGINE_DIR, target)).size / 1024).toFixed(0)} KiB)`)
   }
 }
 
@@ -111,42 +110,18 @@ async function fetchSound(tmp: string) {
   log(`sound/${count} files`)
 }
 
-async function fetchWad(tmp: string) {
+async function fetchWad() {
   if (!withWad) return
   const target = join(VENDOR, "doom1.wad")
-  if (existsSync(target) && statSync(target).size > 1_000_000) {
+  if (isValidWad(target)) {
     log("doom1.wad already present, skipping")
     return
   }
-
-  let lastError: unknown
-  for (const url of WAD_CANDIDATES) {
-    try {
-      const bytes = await download(url)
-      if (url.endsWith(".gz")) {
-        const wad = Bun.gunzipSync(bytes)
-        if (decodeHeader(wad) !== "IWAD") throw new Error("not an IWAD")
-        write(target, wad)
-        return
-      }
-      const archive = join(tmp, "wad.zip")
-      writeFileSync(archive, bytes)
-      const tar = Bun.spawnSync(["unzip", "-o", "-q", archive, "DOOM1.WAD", "-d", tmp])
-      if (tar.exitCode !== 0) throw new Error(`unzip failed: ${tar.stderr.toString()}`)
-      const wad = new Uint8Array(await Bun.file(join(tmp, "DOOM1.WAD")).arrayBuffer())
-      if (decodeHeader(wad) !== "IWAD") throw new Error("not an IWAD")
-      write(target, wad)
-      return
-    } catch (error) {
-      lastError = error
-      log(`failed: ${url}: ${String(error)}`)
-    }
-  }
-  throw new Error(`could not download DOOM1.WAD: ${String(lastError)}`)
-}
-
-function decodeHeader(wad: Uint8Array) {
-  return new TextDecoder().decode(wad.subarray(0, 4))
+  await downloadWad(target, (received, total) => {
+    if (total > 0 && received === total) log(`downloaded ${(total / 1024 / 1024).toFixed(1)} MiB`)
+  })
+  if (!isValidWad(target)) throw new Error("downloaded WAD failed validation")
+  log(`doom1.wad (${(statSync(target).size / 1024).toFixed(0)} KiB)`)
 }
 
 async function main() {
@@ -157,11 +132,11 @@ async function main() {
   try {
     await fetchEngine(tmp)
     await fetchSound(tmp)
-    await fetchWad(tmp)
+    await fetchWad()
 
     const manifest: Record<string, { bytes: number; sha256: string }> = {}
     for (const [name, path] of [
-      ["doom.js", join(ENGINE_DIR, "doom.js")],
+      ["doom.cjs", join(ENGINE_DIR, "doom.cjs")],
       ["doom.wasm", join(ENGINE_DIR, "doom.wasm")],
       ["doom1.wad", join(VENDOR, "doom1.wad")],
     ] as const) {
